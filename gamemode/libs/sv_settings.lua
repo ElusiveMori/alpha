@@ -9,7 +9,7 @@ local function save_settings()
 	local output = {}
 
 	for k, v in pairs(library) do
-		if (isstring(k)) then
+		if (isstring(k) and type(v) != "function") then
 			if (k:sub(1, 2) != "__") then
 				output[k] = v
 			end
