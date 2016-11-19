@@ -15,6 +15,8 @@ local hook = hook
 
 base_meta.__index = base_meta
 base_meta.data = {}
+
+local function dummy() end
 	
 --[[ loop utilities ]]
  function iter_parents(class)
@@ -90,14 +92,8 @@ function base_meta:derive_from(...)
 	table.CopyFromTo(args, self.__parents)
 end
 
-function base_meta:is_child_from(class_id)
-	for base in iter_parents(self) do
-		if (base.__class_id == class_id) then
-			return true
-		end
-	end
-
-	return false
+function base_meta:is_instance_of(class_id)
+	return self.__superclass_lookup[class_id] != nil
 end
 
 function base_meta:is_valid()
@@ -124,17 +120,10 @@ function base_meta:base_call(id, func, ...)
 	self.__parents[id][func](self, ...)
 end
 
-function base_meta:constructor(...)
-end
-
-function base_meta:post_constructor()
-end
-
-function base_meta:destructor(...)
-end
-
-function base_meta:post_register()
-end
+base_meta.constructor      = dummy
+base_meta.post_constructor = dummy
+base_meta.destructor       = dummy
+base_meta.post_register    = dummy
 
 function base_meta:construct_base(t, ...)
 	for _, parent in pairs(self.__parents) do
@@ -163,13 +152,14 @@ function object.new_class(id)
 
 	-- internal fields
 
-	t.__class_meta   = class_meta -- class metatable
-	t.__parents      = {}  -- direct bases (defined by class)
-	t.__class_id     = id  -- class id
-	t.__index        = t   -- itself
-	t.__all_parents  = {t} -- all class parents (including itself)
-	t.__all_children = {t} -- all class children (including itself)
-	t.__tostring     = base_meta.__tostring
+	t.__class_meta        = class_meta -- class metatable
+	t.__parents           = {}  -- direct bases (defined by class)
+	t.__class_id          = id  -- class id
+	t.__index             = t   -- itself
+	t.__all_parents       = {t} -- all class parents (including itself)
+	t.__superclass_lookup = {[id] = t}
+	t.__all_children      = {t} -- all class children (including itself)
+	t.__tostring          = base_meta.__tostring
 
 	-- default methods
 
@@ -307,6 +297,7 @@ object:hook_add("PostInitialize", function()
 
 			table.insert(class.__all_parents, base)
 			table.insert(base.__all_children, class)
+			class.__superclass_lookup[base.__class_id] = base
 		end
 
 		class.__all_parents = table.Reverse(class.__all_parents)
