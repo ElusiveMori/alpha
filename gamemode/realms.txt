@@ -1,0 +1,31 @@
+Realms are used to separate entities into different interactable groups. Entities in different realms cannont see, touch, or anyhow interact with each other, and thus, can occupy the same map space. This can be used to extend the playable map area by cleverly utilising realms and transitions between them.
+
+Entities that are not assigned to a realm interact normally with everything else, and are visible to all realms.
+
+Realms are managed by Realm Controllers. Each realm controller has a unique string id and an integer depth property. Depth describes how many indeces are required to index an individual realm owned by an RC.
+
+Transfer between realms is done by Gateway Actors (GAs) and Gateway Descriptors (GDs).
+Gateway Actors are world entities that may incorporate a single or multiple Gateway Descriptors in them. They are used to 'store' GDs and determine how and which entities are transferred.
+Gateway Descriptors are abstract objects that describe which RC and GA entities will be transported to when they are triggered.
+There are three types of Gateway Descriptors:
+
+Upcast GD - used to transfer entities from an RC of depth D to an RC of depth D + 1.
+Downcast GD - used to transfer entities from an RC of depth D + 1 to an RC of depth D.
+Transit GD - used to transfer entities between RCs of equal depth.
+
+Each GD also has a unique ID, an 'origin' RC, and a target GD.
+UGDs can only target DGDs, DGDs can only target UGDs, and TGDs can only target TGDs.
+
+UGDs also have an index assigned to them, which is used when transferring.
+UGDs are uniquely indexed using both their unique id and index, which means that several UGDs are bound to have the same string identificator.
+
+The way UGDs and DGDs work is the following:
+	UGDs:
+		1. Take indices of the entity's current realm, let them be i_1, i_2, ..., i_k, where k is the origin RC's depth.
+		2. Add the UGD's own index to this list. The resulting list will be i_1, i_2, ..., i_k, i_u, where i_u is that index.
+		3. Transfer entity to the target RC, using the indices i_1, i_2, ..., i_k, i_u.
+	DGDs:
+		1. Take the indeces of the entity's current realm, i_1, i_2, ..., i_k.
+		2. The indices i_1, i_2, ..., i_k-1 define the indices of the realm that we will be transporting to.
+		3. The last index i_k defines which UGD we are looking for amongst the target ones.
+

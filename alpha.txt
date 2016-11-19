@@ -1,0 +1,7 @@
+"alphaaaa"
+{
+	"base"		"base"
+	"title"		"Alpha"
+	"maps"		""
+	"menusystem"	"1"
+}
