@@ -1,6 +1,5 @@
-local log = alpha.logger("object")
+#LIBRARY object
 
-local object   = Library "object"
 object.classes = object.classes or {}
 object.meta    = object.meta or {}
 

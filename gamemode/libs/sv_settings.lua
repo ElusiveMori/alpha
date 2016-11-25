@@ -1,14 +1,11 @@
-local log = alpha.logger("settings")
-
-local library = Library "settings"
-
-library:add_dependency "io"
+#LIBRARY settings
+#DEPEND io
 
 local function save_settings()
 	log:info("saving settings...")
 	local output = {}
 
-	for k, v in pairs(library) do
+	for k, v in pairs(settings) do
 		if (isstring(k) and type(v) != "function") then
 			if (k:sub(1, 2) != "__") then
 				output[k] = v
@@ -26,18 +23,18 @@ local function load_settings()
 	hook.Call("AlphaSettingsLoaded")
 end
 
-function library:initialize()
+function settings:initialize()
 	load_settings()
 	save_settings()
 end
 
-function library:shutdown()
+function settings:shutdown()
 	save_settings()
 end
 
 local defaults = {}
 
-function library:set_default(entry, default)
+function settings:set_default(entry, default)
 	if (self[entry] == nil) then
 		self[entry] = (istable(default) and table.Copy(default)) or default
 	end
@@ -57,14 +54,14 @@ concommand.Add("alpha_clearsettings", function(client, cmd, args)
 		if (!args[1]) then
 			for k, v in pairs(defaults) do
 				log:info(Format("defaulting setting \"%s\"", k))
-				library[k] = (istable(v) and table.Copy(v)) or v
+				settings[k] = (istable(v) and table.Copy(v)) or v
 			end
 		else
 			local setting = args[1]
 			if (defaults[setting]) then
 				local default = defaults[setting]
 				log:info(Format("defaulting setting \"%s\"", setting))
-				library[setting] = (istable(default) and table.Copy(default)) or default
+				settings[setting] = (istable(default) and table.Copy(default)) or default
 			else
 				log:warn("no default for this setting")
 			end

@@ -2,6 +2,8 @@ alpha = alpha or {}
 alpha.folder_name = "alpha"
 alpha.debug       = true
 
+#DEBUG = true
+
 function alpha.include(path)
 	local filename = string.Explode('/', path)
 	local prefix = filename[#filename]:sub(1, 3)
@@ -12,10 +14,10 @@ function alpha.include(path)
 		end
 
 		if (prefix == "sv_" or prefix == "sh_") then
-			include(path)
+			include_preprocess(path)
 		end
 	elseif (prefix == "sh_" or prefix == "cl_") then
-		include(path)
+		include_preprocess(path)
 	end
 end
 
@@ -38,8 +40,8 @@ function alpha.include_directory_recursive(path)
 end
 
 alpha.include_directory(alpha.folder_name .. "/gamemode/preload")
-
-local log = alpha.logger("boot")
+	
+#INJECT_LOGGER
 
 if (SERVER) then
 	require("mysqloo")

@@ -1,8 +1,5 @@
-local log = alpha.logger("context_init")
-
-local context_init = Library "context_init"
-
-context_init:add_dependency "object"
+#LIBRARY context_init
+#DEPEND object
 
 function context_init:initialize()
 	self:hook_add("PostObjectInitialize", self.setup)

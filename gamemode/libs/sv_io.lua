@@ -1,25 +1,23 @@
-local log = alpha.logger("io")
-
-local library = Library "io"
+#LIBRARY io
 local prefix = "alpha/"
 
-function library.read(filename)
+function io.read(filename)
 	return file.Read(prefix .. filename)
 end
 
-function library.write(filename, str)
+function io.write(filename, str)
 	file.Write(prefix .. filename, str)
 end
 
-function library.append(filename, str)
+function io.append(filename, str)
 	file.Append(prefix .. filename, str)
 end
 
-function library.remove(filename)
+function io.remove(filename)
 	file.Delete(prefix .. filename)
 end
 
-function library:initialize()
+function io:initialize()
 	if (!file.Exists("alpha", "DATA")) then
 		file.CreateDir("alpha")
 	end

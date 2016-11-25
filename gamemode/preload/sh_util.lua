@@ -1,5 +1,3 @@
-AddCSLuaFile()
-
 alpha.util = alpha.util
 
 NIL_TOKEN = NIL_TOKEN or {}

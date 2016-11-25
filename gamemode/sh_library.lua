@@ -1,4 +1,4 @@
-local log = alpha.logger("library")
+#INJECT_LOGGER
 
 alpha.library = alpha.library or {}
 local library = alpha.library

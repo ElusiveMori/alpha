@@ -1,4 +1,4 @@
 AddCSLuaFile()
-AddCSLuaFile("sh_boot.lua")
 
-include("sh_boot.lua")
+include("sh_preprocess.lua")
+include_preprocess("alpha/gamemode/sh_boot.lua")
