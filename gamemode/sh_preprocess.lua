@@ -7,10 +7,10 @@ local function write_enabled(line)
 end
 
 local function write_disabled(line)
-	RESULT = RESULT .. string.gsub("[^\n]*", "")
+	RESULT = RESULT .. string.gsub("\n", "\n//")
 end
 
-WRITE = write_enabled
+__WRITE = write_enabled
 
 local function filter_newlines(str)
 	local result = ""
@@ -38,15 +38,15 @@ end
 
 local function update_write()
 	if (check_stack()) then
-		WRITE = write_enabled
+		__WRITE = write_enabled
 	else
-		WRITE = write_disabled
+		__WRITE = write_disabled
 	end
 end
 
 local directives
 
-function EXEC_DIRECTIVE(directive, ...)
+function __EXEC_DIRECTIVE(directive, ...)
 	directives[directive](...)
 end
 
@@ -67,10 +67,10 @@ directives = {
 		update_write()
 	end,
 	INJECT = function(expr)
-		WRITE(expr:gsub("\n", " "))
+		__WRITE(expr:gsub("\n", " "))
 	end,
 	INJECT_LOGGER = function(name)
-		EXEC_DIRECTIVE("INJECT", ([[local log = alpha.logger("%s") ]]):format(prefix or FILESHORT))
+		__EXEC_DIRECTIVE("INJECT", ([[local log = alpha.logger("%s") ]]):format(prefix or FILESHORT))
 	end,
 	LIBRARY = function(name)
 		name = name or FILESHORT
@@ -79,104 +79,280 @@ directives = {
 			return
 		end
 
-		EXEC_DIRECTIVE("INJECT_LOGGER", "library/" .. name)
-		EXEC_DIRECTIVE("INJECT", ([[local library = Library("%s") local %s = library]]):format(name, name))
+		__EXEC_DIRECTIVE("INJECT_LOGGER", "library/" .. name)
+		__EXEC_DIRECTIVE("INJECT", ([[local library = Library("%s") local %s = library ]]):format(name, name))
 	end,
 	DEPEND = function(...)
 		local dependencies = {...}
 
 		for _, dependency in pairs(dependencies) do
-			EXEC_DIRECTIVE("INJECT", ([[library:add_dependency("%s") ]]):format(dependency))
+			__EXEC_DIRECTIVE("INJECT", ([[library:add_dependency("%s") ]]):format(dependency))
 		end
 	end
 }
 
-local function preprocess(str, filename)
-	local parts = string.Explode("/", filename)
-	local noext = string.Explode(".", parts[#parts])[1]
-	local nopref = noext:sub(4, #noext)
-	parts[#parts] = nil
-
-	local chunk = {
-		"RESULT = ''",
-		string.format("FILE = [[%s]]", noext),
-		string.format("FILEPATH = [[%s]]", filename),
-		string.format("FILESHORT = [[%s]]", nopref)
-	}
-
+local function parse(str)
 	str = str:gsub("\r", "")
 
-	for _, line in pairs(string.Explode("\n", str)) do
-		local directive = line:match("^%s*#(.*)$")
+	local current_pos = 1
+	local current_static = ""
+	local chunks = {}
 
-		if (directive) then
-			local directive_statement, directive_args = directive:match("([^%s]+)%s*(.*)")
+	local function peek(n)
+		n = n or 0
+		return str:sub(current_pos + n, current_pos + n)
+	end
 
-			if (directives[directive_statement]) then
-				if (#directive_args > 0) then
-					local split_args = {}
+	local function get(n)
+		n = n or 0
+		local c = str:sub(current_pos, current_pos + n)
+		current_pos = current_pos + n + 1
+		return c
+	end
 
-					for arg in directive_args:gmatch("[^%s]+") do
-						table.insert(split_args, ("[[%s]]"):format(arg))
-					end
+	local function append(what)
+		current_static = current_static .. what
+	end
 
-					table.insert(chunk, ("EXEC_DIRECTIVE([[%s]], %s) "):format(
-						directive_statement,
-						table.concat(split_args, ", ")))
-				else
-					table.insert(chunk, ("EXEC_DIRECTIVE([[%s]]) "):format(directive_statement))
-				end
-			else
-				table.insert(chunk, ("%s "):format(directive))
-			end
-
-			table.insert(chunk, ("WRITE [====[\n--%s]====]\n"):format(line .. "\n"))
+	local function consume(what)
+		if (str:sub(current_pos, current_pos + #what - 1) == what) then
+			current_pos = current_pos + #what
+			append(what)
+			return true
 		else
-			local last = 1
-
-			for text, expr, index in string.gmatch(line, "(.-)$(%b())()") do 
-				last = index
-
-				if text != "" then
-					table.insert(chunk, string.format("WRITE [====[\n%s]====]", text))
-				end
-
-				table.insert(chunk, string.format("WRITE (tostring(%s))", expr))
-			end
-
-			table.insert(chunk, string.format("WRITE [====[\n%s]====]\n", string.sub(line, last) .. "\n"))
+			return
 		end
 	end
 
-	--if (DEBUG) then
-		local debug_chunk = table.Copy(chunk)
+	local function eof()
+		return peek() == ""
+	end
 
-		for k, line in pairs(debug_chunk) do
-			debug_chunk[k] = filter_newlines(line)
+	local function append_until(seq)
+		while (!eof() and !consume(seq)) do
+			append(get())
+		end
+	end
+
+	local function try_multiline_string()
+		if (consume("[")) then
+			-- count equals signs
+			local equals = 0
+			while (consume("=")) do
+				equals = equals + 1
+			end
+
+			-- if equals are followed by another bracket, then we have a string start
+			if (consume("[")) then
+				multiline_started = true
+
+				-- the end will have this form
+				local delimeter = "]" .. ("="):rep(equals) .. "]"
+				-- look for the end
+				while (!eof() and !consume(delimeter)) do
+					append(get())
+				end
+
+				return true
+			else
+				return false
+			end
+		else
+			return false
+		end
+	end
+
+	local function commit_chunk(content, type)
+		table.insert(chunks, {type = type, content = content})
+	end
+
+	local function commit_static()
+		commit_chunk(current_static, "static")
+		current_static = ""
+	end
+
+	local function commit_directive(directive)
+		commit_chunk(directive, "directive")
+	end
+
+	local function commit_expression(expression)
+		commit_chunk(expression, "expression")
+	end
+
+	local function is_line_start()
+		local i = current_pos - 1
+
+		while (str[i] == " " or str[i] == "\t") do
+			i = i - 1
 		end
 
-		file.CreateDir("alpha-debug-preprocess/" .. table.concat(parts, "/"))
-		file.Write("alpha-debug-preprocess/" .. filename .. ".txt", table.concat(debug_chunk, "\n"))
-	--end
+		if (i <= 0 or str[i] == "\n") then
+			return true
+		else
+			return false
+		end
+	end
 
-	CompileString(table.concat(chunk, " "), filename)()
+	local function try_comments()
+		if (consume("--")) then
+			local multiline = try_multiline_string()
 
-	--if (DEBUG) then
-		file.CreateDir("alpha-debug-postprocess/" .. table.concat(parts, "/"))
-		file.Write("alpha-debug-postprocess/" .. filename .. ".txt", RESULT)
-	--end
+			if (!multiline) then
+				append_until("\n")
+			end
+
+			return true
+		elseif (consume("/*")) then
+			append_until("*/")
+
+			return true
+		elseif (consume("//")) then
+			append_until("\n")
+
+			return true
+		end
+
+		return false
+	end
+
+	local function try_literals()
+		if (consume("\"")) then
+			append_until("\"")
+
+			return true
+		elseif (consume("'")) then
+			append_until("'")
+
+			return true
+		elseif (peek() == "[") then
+			try_multiline_string()
+
+			return true
+		end
+
+		return false
+	end
+
+	local function try_directives()
+		if (peek() == "$" and peek(1) == "(") then
+			local expr = ""
+			commit_static()
+			get(1)
+
+			while (!eof() and peek() != ")") do
+				expr = expr .. get()
+			end
+
+			if (eof()) then
+				error("unexpected dynamic expression end")
+			end
+
+			get()
+			commit_expression(expr)
+
+			return true
+		elseif (peek() == "#" and is_line_start()) then
+			commit_static()
+			get()
+
+			local directive = ""
+
+			while (!eof() and peek() != "\n") do
+				directive = directive .. get()
+			end
+
+			commit_directive(directive)
+			append("//#" .. directive)
+
+			return true
+		end
+
+		return false
+	end
+
+	while (!eof()) do
+		if (!try_comments()) then
+			if (!try_literals()) then
+				if (!try_directives()) then
+					append(get())
+				end
+			end
+		end
+	end
+
+	if (current_static != "") then
+		commit_static()
+	end
+
+	local final = ""
+
+	local function process_chunk_static(chunk)
+		final = final .. ("__WRITE [====[\n%s]====]\n"):format(chunk.content)
+	end
+
+	local function process_chunk_directive(chunk)
+		local directive_statement, directive_args = chunk.content:match("([^%s]+)%s*(.*)")
+
+		if (directives[directive_statement]) then
+			if (#directive_args > 0) then
+				local split_args = {}
+
+				for arg in directive_args:gmatch("[^%s]+") do
+					table.insert(split_args, ("[[%s]]"):format(arg))
+				end
+
+				final = final .. ("__EXEC_DIRECTIVE(\"%s\", %s)\n"):format(directive_statement, table.concat(split_args, ", "))
+			else
+				final = final .. ("__EXEC_DIRECTIVE(\"%s\")\n"):format(chunk.content)
+			end
+		else
+			final = final .. ("%s\n"):format(chunk.content)
+		end
+	end
+
+	local function process_chunk_expression(chunk)
+		final = final .. ("__WRITE (%s)\n"):format(chunk.content)
+	end
+
+	for _, chunk in pairs(chunks) do
+		if (chunk.type == "static") then
+			process_chunk_static(chunk)
+		elseif (chunk.type == "directive") then
+			process_chunk_directive(chunk)
+		elseif (chunk.type == "expression") then
+			process_chunk_expression(chunk)
+		end
+	end
+
+	return final
 end
 
 function include_preprocess(path)
 	local content = file.Read(path, "LUA")
 
 	if (content) then
-		local success, result = pcall(preprocess, content, path)
+		local parts = string.Explode("/", path)
+		local noext = string.Explode(".", parts[#parts])[1]
+		local nopref = noext:sub(4, #noext)
+		parts[#parts] = nil
 
-		if (!success) then
-			error(string.format("preprocess error in file %s: %s", path, result))
-		else
-			return CompileString(RESULT, path)()
-		end
+		local preprocessor_source = ([[
+			RESULT = ""
+			FILE = "%s"
+			FILEPATH = "%s"
+			FILESHORT = "%s"
+		]]):gsub("\t", ""):gsub("\n", " "):format(noext, filename, nopref)
+
+		local preprocessor_source = preprocessor_source .. parse(content)
+
+		file.CreateDir("alpha-debug-preprocess/" .. table.concat(parts, "/"))
+		file.Write("alpha-debug-preprocess/" .. path .. ".txt", preprocessor_source)
+
+		RunString(preprocessor_source, "preprocessing: " .. path)
+
+		file.CreateDir("alpha-debug-postprocess/" .. table.concat(parts, "/"))
+		file.Write("alpha-debug-postprocess/" .. path .. ".txt", RESULT)
+
+		RunString(RESULT, path)
 	end
 end
