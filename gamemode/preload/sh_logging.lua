@@ -66,3 +66,8 @@ function alpha.logger(tag)
 
 	return t
 end
+
+alpha.preprocess.add_directive("logger",
+	function(name)
+		alpha.preprocess.inject(([[local log = alpha.logger("%s")]]):format(name or FILESHORT))
+	end)
