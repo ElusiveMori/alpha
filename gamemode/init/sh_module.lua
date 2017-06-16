@@ -64,6 +64,8 @@ function module.get(name)
 	end
 end
 
+local module_path = alpha.directory_name .. "/gamemode/modules/"
+
 function module.scan()
 	local file_queue = {}
 	local directory_queue = {alpha.directory_name .. "/gamemode/modules/"}
@@ -118,6 +120,10 @@ function module.include_all()
 	for qualifier, _ in pairs(index) do
 		module.include(qualifier)
 	end
+end
+
+function module.path_from_module(qualifier)
+	return module_path .. qualifier:gsub("%.", "/")
 end
 
 alpha.preprocess.add_directive("using",
