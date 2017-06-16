@@ -30,13 +30,26 @@ end
 
 local prefix_padding_length = 5
 
+local sv_color = Color(145, 219, 231)
+local cl_color = Color(231, 219, 116)
+
 local function internal_print(self, prefix, ...)
 	local args = {...}
 	local time = os.date("%d/%m %H:%M:%S", os.time())
 
+
 	table.insert(args, 1, Color(162, 195, 173))
 	table.insert(args, 1, Format("[%s | %s | alpha - %s] ", time, prefix .. (" "):rep(prefix_padding_length - #prefix), self.tag))
 	table.insert(args, 1, Color(59, 165, 93))
+
+	if (CLIENT) then
+		table.insert(args, 1, "CL | ")
+		table.insert(args, 1, cl_color)
+	else
+		table.insert(args, 1, "SV | ")
+		table.insert(args, 1, sv_color)
+	end
+
 	table.insert(args, "\n")
 
 	MsgC(vararg_stringify(unpack(args)))
