@@ -15,7 +15,7 @@ try(function()
 
 	-- accessor func for current_include_dir
 	function alpha.pwd(path)
-		if (pwd) then
+		if (path) then
 			current_include_dir = path
 		else
 			return current_include_dir
