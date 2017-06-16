@@ -1,12 +1,12 @@
-#logger
+#log
 
 if (SERVER) then
-	require("mysqloo")
+	--require("mysqloo")
 end
 
 if (SERVER and !mysqloo) then
-	log:warn("MySQLOO not detected - aborting!")
-	return
+	--log:warn("MySQLOO not detected - aborting!")
+	--return
 end
 
 -- This is just for padding
@@ -18,16 +18,16 @@ log:info("initialize starting...")
 local start_time = SysTime()
 
 if (alpha.loaded) then
-	log:info("reload detected - unloading libraries...")
+	log:info("reload detected - unloading modules...")
 	hook.Call("AlphaReload")
-	log:info("libraries unloaded.")
+	log:info("modules unloaded.")
 else
 	alpha.loaded = true
 end
 
-log:info("loading libraries...")
-alpha.include(alpha.folder_name .. "/gamemode/init/sh_library.lua")
-log:info("libraries loaded.")
+log:info("loading modules...")
+alpha.include("sh_module.lua")
+log:info("modules loaded.")
 
 hook.Call("PostInitialize")
 log:info("initialize finished.")

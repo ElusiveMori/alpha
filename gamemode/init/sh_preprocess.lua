@@ -5,38 +5,57 @@ local function new_preprocess_parse_exception(message, cause)
 end
 
 local function new_preprocess_compile_exception(path, cause)
-
-	return new_exception(("error compiling preprocessor script of file %s"):format(path), "preprocess_compile", cause)
+	return new_exception(("error compiling preprocessor script of file %s"):format(path), "preprocessor_exception", cause)
 end
 
 local function new_preprocess_execute_exception(path, cause)
-	return new_exception(("error running preprocessor script of file %s"):format(path), "preprocess_execute", cause)
+	return new_exception(("error running preprocessor script of file %s"):format(path), "preprocessor_exception", cause)
 end
 
 local function new_postprocess_compile_exception(path, cause)
-	return new_exception(("error compiling postprocessed file %s"):format(path), "postprocess_compile", cause)
+	return new_exception(("error compiling postprocessed file %s"):format(path), "preprocessor_exception", cause)
 end
 
 local function new_postprocess_execute_exception(path, cause)
-	return new_exception(("error running postprocessed file %s"):format(path), "postprocess_execute", cause)
+	return new_exception(("error running postprocessed file %s"):format(path), "preprocessor_exception", cause)
 end
 
 alpha.preprocess = alpha.preprocess or {}
 local preprocess = alpha.preprocess
+
 preprocess.directives = preprocess.directives or {}
 local directives = preprocess.directives
-preprocess.result = ""
+
+local context_stack = {}
+function preprocess.push_context()
+	local context = {
+		FILE = FILE,
+		PATH = PATH,
+		FILESHORT = FILESHORT,
+		RESULT = RESULT,
+	}
+
+	table.insert(context_stack, context)
+end
+
+function preprocess.pop_context()
+	local context = table.remove(context_stack)
+
+	for k, v in pairs(context) do
+		_G[k] = v
+	end
+end
 
 function preprocess.reset_result()
-	preprocess.result = ""
+	RESULT = ""
 end
 
 function preprocess.write_enabled(line)
-	preprocess.result = preprocess.result .. line
+	RESULT = RESULT .. line
 end
 
 function preprocess.write_disabled(line)
-	preprocess.result = preprocess.result .. string.gsub("\n", "\n//")
+	RESULT = RESULT .. string.gsub("\n", "\n//")
 end
 
 preprocess.write = preprocess.write_enabled
@@ -71,7 +90,7 @@ function preprocess.default_arg_parse(str)
 		table.insert(args, arg)
 	end
 
-	return args
+	return table.concat(args, ",")
 end
 
 function preprocess.parse_directive_args(directive, str)
@@ -370,10 +389,10 @@ function alpha.include_preprocess(path)
 
 		local preprocessor_source = ([[
 			local preprocess = alpha.preprocess
-			preprocess.result = ""
 			FILE = "%s"
 			PATH = "%s"
 			FILESHORT = "%s"
+			RESULT = ""
 		]]):gsub("\t", ""):gsub("\n", " "):format(noext, path, nopref)
 
 		preprocessor_source = preprocessor_source .. preprocess.parse(source)
@@ -381,36 +400,32 @@ function alpha.include_preprocess(path)
 		file.CreateDir("alpha-debug-preprocess/" .. table.concat(parts, "/"))
 		file.Write("alpha-debug-preprocess/" .. path .. ".txt", preprocessor_source)
 
-		--[[local result = RunString(preprocessor_source, "data/alpha-debug-preprocess/" .. path, false)
-
-		if (!result) then
-			file.CreateDir("alpha-debug-postprocess/" .. table.concat(parts, "/"))
-			file.Write("alpha-debug-postprocess/" .. path .. ".txt", preprocess.result)
-
-			result = RunString(preprocess.result, "data/alpha-debug-postprocess/" .. path, false)
-
-			if (result) then
-				throw(new_exception(("error running postprocessed script of file %s"):format(path), "preprocess_exception", new_exception(result)))
-			end
-		else
-			throw(new_exception(("error running preprocessor script of file %s"):format(path), "preprocess_exception", new_exception(result)))
-		end]]--
-
 		local preprocessor = CompileString(preprocessor_source, path, false)
+		local result
 
 		if (isfunction(preprocessor)) then
-			try(preprocessor).catch(function(exception)
+			try(function()
+				preprocess.push_context()
+				preprocessor()
+				result = RESULT
+			end).anyway(function()
+				preprocess.pop_context()
+			end).catch(function(exception)
+				if (exception.id == "preprocessor_exception") then
+					throw(exception)
+				end
+
 				throw(new_preprocess_execute_exception(path, exception))
 			end)
 
 			file.CreateDir("alpha-debug-postprocess/" .. table.concat(parts, "/"))
-			file.Write("alpha-debug-postprocess/" .. path .. ".txt", preprocess.result)
+			file.Write("alpha-debug-postprocess/" .. path .. ".txt", result)
 
-			local postprocessor = CompileString(preprocess.result, path, false)
+			local postprocessor = CompileString(result, path, false)
 
 			if (isfunction(postprocessor)) then
 				try(postprocessor).catch(function(exception)
-					throw(new_postprocess_execute_exception(path, exception))
+					throw(new_include_exception(("error including file %s"):format(path), exception))
 				end)
 			else
 				throw(new_postprocess_compile_exception(path, new_lua_exception(postprocessor)))

@@ -15,7 +15,7 @@ if (SERVER) then
 	function class:constructor()
 		self.entity = ents.Create("alpha_entity")
 
-		if (!IsValid(self.entity)) then
+		if (IsValid(self.entity)) then
 			return false
 		end
 

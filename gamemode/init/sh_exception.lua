@@ -19,37 +19,76 @@ local function collect_trace(level)
 end
 
 function try(try_func)
-	return {
-		catch = function(catch_func)
-			local exception
-			local trace
+	local t = {}
 
-			local success, arg1, arg2, arg3, arg4 = xpcall(try_func, function(err)
-				exception = err
-				trace = collect_trace(1)
-			end)
+	t.catch = function(catch_func)
+		local exception
+		local trace
 
-			if (!istable(exception)) then
-				exception = new_exception(exception, "lua_error")
-			end
+		local success, arg1, arg2, arg3, arg4 = xpcall(try_func, function(err)
+			exception = err
+			trace = collect_trace(1)
+		end)
 
-			exception.trace = trace
-
-			if (!success) then
-				catch_func(exception)
-			else
-				return arg1, arg2, arg3, arg4
-			end
+		if (!istable(exception)) then
+			exception = new_exception(exception, "lua_error")
 		end
-	}
+
+		exception.trace = trace
+
+		if (t.anyway_func) then
+			t.anyway_func()
+		end
+
+		if (!success) then
+			catch_func(exception)
+		else
+			return arg1, arg2, arg3, arg4
+		end
+	end
+
+	-- this is called after main code, regardless of whether it threw an exception or not, but before the catch block
+	-- this code should not throw exceptions, unless you want to obscure the original exception
+	t.anyway = function(anyway_func)
+		t.anyway_func = anyway_func
+
+		return t
+	end
+
+	return t
 end
 
-function alpha.format_trace(trace)
+local function get_trace_hash(trace)
+	return util.CRC(tostring(trace.short_src) .. tostring(trace.currentline))
+end
+
+-- should rewrite this at some point to use a reversed stack trace (opposite of java)
+function alpha.format_trace(trace, common_frames)
 	local formatted = ""
 	local max_line_length = 1
 
 	for k, v in ipairs(trace) do
-		formatted = formatted .. ("\n>>%2i: @%s:%i"):format(k, v.short_src, v.currentline):gsub("gamemodes/", "")
+		local line = ("\n  >>%2i: @%s:%i"):format(k, v.short_src, v.currentline):gsub("gamemodes/", "")
+		if (common_frames[get_trace_hash(v)]) then
+			local all_common_after = true
+
+			for i=k+1, #trace do
+				if (!common_frames[get_trace_hash(trace[i])]) then
+					all_common_after = false
+					break
+				end
+			end
+
+			if (all_common_after) then
+				formatted = formatted .. ("\n... %i common frames omitted"):format(#trace - k + 1)
+				break
+			else
+				formatted = formatted .. line
+			end
+		else
+			common_frames[get_trace_hash(v)] = true
+			formatted = formatted .. line
+		end
 	end
 
 	return formatted
@@ -62,13 +101,7 @@ local exception_meta = {
 }
 
 function exception_meta:__tostring()
-	local result = ("%s%s"):format(self.message, alpha.format_trace(self.trace))
-
-	if (self.cause) then
-		result = result .. "\nCaused by: " .. tostring(self.cause)
-	end
-
-	return result
+	return alpha.stringify_exception(self, {})
 end
 
 exception_meta.__index = exception_meta
@@ -99,10 +132,20 @@ function throw(exception, level)
 	error(exception, level + 1)
 end
 
+function alpha.stringify_exception(exception, common_frames)
+	local result = ("%s%s"):format(exception.message, alpha.format_trace(exception.trace, common_frames))
+
+	if (exception.cause) then
+		result = result .. "\nCaused by: " .. alpha.stringify_exception(exception.cause, common_frames)
+	end
+
+	return result
+end
+
 function alpha.print_exception(message, exception)
 	MsgC(Color(255, 0, 0), "[alpha-error] ", Color(255, 117, 117), message)
 
-	local trace = tostring(exception):gsub("\n", "\n  ")
+	local trace = tostring(exception) --:gsub("\n", "\n  ")
 
 	for k, v in ipairs(string.Explode("\n", trace)) do
 		MsgC(Color(255, 117, 117), v, "\n")
