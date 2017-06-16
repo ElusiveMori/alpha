@@ -93,6 +93,16 @@ function preprocess.default_arg_parse(str)
 	return table.concat(args, ",")
 end
 
+function preprocess.vararg_arg_parse(str)
+	local args = {}
+
+	for arg in str:gmatch("[^%s]+") do
+		table.insert(args, arg)
+	end
+
+	return unpack(args)
+end
+
 function preprocess.parse_directive_args(directive, str)
 	if (directives[directive]) then
 		if (directives[directive].parse) then
