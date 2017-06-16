@@ -317,3 +317,20 @@ object:hook_add("PostInitialize", function()
 
 	hook.Call("PostObjectInitialize")
 end)
+
+alpha.preprocess.add_directive("class",
+  function(text)
+    alpha.preprocess.inject(([[local class = Class("%s")]]):format(text))
+  end)
+
+alpha.preprocess.add_directive("derive",
+  function(...)
+    local args = {...}
+    for k, v in pairs(args) do
+      args[k] = "\"" .. v .. "\""
+    end
+    alpha.preprocess.inject(([[class:derive_from(%s)]]):format(table.concat(args, ",")))
+  end,
+  alpha.preprocess.vararg_arg_parse)
+
+alpha.include_directory_recursive("classes")
